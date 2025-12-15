@@ -8,7 +8,7 @@ const uri =
 
 const baseDir = path.join(__dirname, "portfolio");
 
-// ---------------- HELPER ----------------
+
 function sendJSON(res, status, data) {
   res.writeHead(status, {
     "Content-Type": "application/json",
@@ -19,10 +19,8 @@ function sendJSON(res, status, data) {
   res.end(JSON.stringify(data));
 }
 
-// ---------------- SERVER ----------------
 const server = http.createServer(async (req, res) => {
 
-  // ✅ CORS PREFLIGHT
   if (req.method === "OPTIONS") {
     res.writeHead(204, {
       "Access-Control-Allow-Origin": "*",
@@ -32,7 +30,6 @@ const server = http.createServer(async (req, res) => {
     return res.end();
   }
 
-  // ---------------- GET JOBS ----------------
   if (req.method === "GET" && req.url === "/api") {
     try {
       const client = new MongoClient(uri);
@@ -53,8 +50,8 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  // ---------------- TOGGLE BOOKMARK ----------------
-  if (req.method === "POST" && req.url === "/api/bookmarks") {
+
+  if (req.method === "POST" && req.url === "/bookmarks") {
     let body = "";
 
     req.on("data", chunk => (body += chunk));
@@ -81,7 +78,7 @@ const server = http.createServer(async (req, res) => {
           job_id: job.job_id
         });
 
-        // ❌ UNBOOKMARK
+
         if (existing) {
           await collection.deleteOne({ job_id: job.job_id });
           await client.close();
@@ -92,7 +89,7 @@ const server = http.createServer(async (req, res) => {
           });
         }
 
-        // ✅ BOOKMARK
+
         await collection.insertOne({
           ...job,
           bookmarkedAt: new Date()
@@ -113,8 +110,8 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // ---------------- GET BOOKMARKS ----------------
-  if (req.method === "GET" && req.url === "/api/bookmarks") {
+
+  if (req.method === "GET" && req.url === "/bookmarks") {
     try {
       const client = new MongoClient(uri);
       await client.connect();
@@ -134,7 +131,7 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  // ---------------- STATIC FILES ----------------
+
   if (req.method === "GET") {
     const filePath =
       req.url === "/"
@@ -156,7 +153,6 @@ const server = http.createServer(async (req, res) => {
   res.end("Not Found");
 });
 
-// ---------------- START ----------------
 const PORT = process.env.PORT || 5767;
 server.listen(PORT, () => {
   console.log("✅ Server running on port", PORT);
