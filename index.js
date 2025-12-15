@@ -70,11 +70,13 @@ const server = http.createServer(async (req, res) => {
         const client = new MongoClient(uri);
         await client.connect();
 
-        const collection = client
-          .db("Tech-Carrer")
-          .collection("bookmarks");
+        const db = client.db("Tech-Carrer");
+        const collection = db.collection("bookmarks");
 
-        // 🔍 Check if already bookmarked
+        // 🔒 ENSURE UNIQUE job_id (safe to run every time)
+        await collection.createIndex({ job_id: 1 }, { unique: true });
+
+        // 🔍 CHECK EXISTING
         const existing = await collection.findOne({
           job_id: job.job_id
         });
