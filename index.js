@@ -1,40 +1,28 @@
 const http = require("http");
 const path = require("path");
 const fs = require("fs");
-const { MongoClient, ObjectId } = require("mongodb");
+const { MongoClient } = require("mongodb");
 
-/* ---------------- CONFIG ---------------- */
 const uri =
   "mongodb+srv://bbach1_db_user:Bharath@final.ooordpi.mongodb.net/?appName=final";
 
 const baseDir = path.join(__dirname, "portfolio");
 
-/* ---------------- HELPER: READ REQUEST BODY ---------------- */
-function getRequestBody(req) {
-  return new Promise((resolve, reject) => {
-    let body = "";
-    req.on("data", chunk => (body += chunk.toString()));
-    req.on("end", () => resolve(body));
-    req.on("error", reject);
-  });
-}
-
-/* ---------------- SERVER ---------------- */
 const server = http.createServer(async (req, res) => {
-  /* ---------- CORS ---------- */
+  // ================= CORS =================
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader(
-    "Access-Control-Allow-Methods",
-    "GET, POST, DELETE, OPTIONS"
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization"
   );
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
 
   if (req.method === "OPTIONS") {
     res.writeHead(204);
     return res.end();
   }
 
-  /* ---------------- GET JOBS ---------------- */
+  // ================= GET JOBS =================
   if (req.url === "/api" && req.method === "GET") {
     try {
       const client = new MongoClient(uri);
@@ -44,106 +32,75 @@ const server = http.createServer(async (req, res) => {
         .db("Tech-Carrer")
         .collection("jobs")
         .find({})
-        .sort({ job_id: 1 })
         .toArray();
 
       await client.close();
 
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(jobs));
-    } catch (error) {
-      console.error("Error fetching jobs:", error);
+    } catch (err) {
+      console.error(err);
       res.writeHead(500);
-      res.end("Internal Server Error");
+      res.end(JSON.stringify({ message: "Failed to fetch jobs" }));
     }
   }
 
-  /* ---------------- SAVE BOOKMARK ---------------- */
+  // ================= ADD BOOKMARK =================
   else if (req.url === "/api/bookmarks" && req.method === "POST") {
-    try {
-      const body = await getRequestBody(req);
-      const job = JSON.parse(body);
+    let body = "";
 
-      const client = new MongoClient(uri);
-      await client.connect();
+    req.on("data", chunk => {
+      body += chunk.toString();
+    });
 
-      const db = client.db("Tech-Carrer");
-      const bookmarks = db.collection("bookmarks");
+    req.on("end", async () => {
+      try {
+        const job = JSON.parse(body);
 
-      const exists = await bookmarks.findOne({
-        job_id: job.job_id
-      });
+        if (!job.job_id) {
+          res.writeHead(400);
+          return res.end(
+            JSON.stringify({ message: "job_id is required" })
+          );
+        }
 
-      if (exists) {
+        const client = new MongoClient(uri);
+        await client.connect();
+
+        const db = client.db("Tech-Carrer");
+        const collection = db.collection("bookmarks");
+
+        // Prevent duplicates
+        const exists = await collection.findOne({
+          job_id: job.job_id
+        });
+
+        if (exists) {
+          await client.close();
+          res.writeHead(409);
+          return res.end(
+            JSON.stringify({ message: "Job already bookmarked" })
+          );
+        }
+
+        await collection.insertOne(job);
+
         await client.close();
-        res.writeHead(400, { "Content-Type": "application/json" });
-        return res.end(JSON.stringify({ message: "Already bookmarked" }));
+
+        res.writeHead(201, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ message: "Bookmarked successfully" }));
+      } catch (err) {
+        console.error(err);
+        res.writeHead(500);
+        res.end(JSON.stringify({ message: "Bookmark failed" }));
       }
-
-      await bookmarks.insertOne(job);
-      await client.close();
-
-      res.writeHead(201, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ message: "Bookmark saved" }));
-    } catch (error) {
-      console.error("Bookmark error:", error);
-      res.writeHead(500);
-      res.end("Internal Server Error");
-    }
+    });
   }
 
-  /* ---------------- GET BOOKMARKS ---------------- */
-  else if (req.url === "/api/bookmarks" && req.method === "GET") {
-    try {
-      const client = new MongoClient(uri);
-      await client.connect();
-
-      const bookmarks = await client
-        .db("Tech-Carrer")
-        .collection("bookmarks")
-        .find({})
-        .toArray();
-
-      await client.close();
-
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(bookmarks));
-    } catch (error) {
-      console.error("Error fetching bookmarks:", error);
-      res.writeHead(500);
-      res.end("Internal Server Error");
-    }
-  }
-
-  /* ---------------- DELETE BOOKMARK ---------------- */
-  else if (req.url.startsWith("/api/bookmarks") && req.method === "DELETE") {
-    try {
-      const urlObj = new URL(req.url, `http://${req.headers.host}`);
-      const id = urlObj.searchParams.get("id");
-
-      const client = new MongoClient(uri);
-      await client.connect();
-
-      await client
-        .db("Tech-Carrer")
-        .collection("bookmarks")
-        .deleteOne({ _id: new ObjectId(id) });
-
-      await client.close();
-
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ message: "Bookmark deleted" }));
-    } catch (error) {
-      console.error("Delete error:", error);
-      res.writeHead(500);
-      res.end("Internal Server Error");
-    }
-  }
-
-  /* ---------------- STATIC FILES ---------------- */
+  // ================= STATIC FILES =================
   else if (req.url === "/" || req.url === "/index.html") {
     fs.readFile(
-      path.join(baseDir, "index.html"),
+      path.join(__dirname, "portfolio", "index.html"),
       (err, content) => {
         if (err) {
           res.writeHead(500);
@@ -153,9 +110,7 @@ const server = http.createServer(async (req, res) => {
         res.end(content);
       }
     );
-  }
-
-  else {
+  } else {
     const filePath = path.join(baseDir, req.url);
     const ext = path.extname(filePath);
 
@@ -164,12 +119,17 @@ const server = http.createServer(async (req, res) => {
       ".js": "application/javascript",
       ".jpg": "image/jpeg",
       ".png": "image/png"
-    }[ext] || "application/octet-stream";
+    }[ext];
+
+    if (!contentType) {
+      res.writeHead(404);
+      return res.end("Not Found");
+    }
 
     fs.readFile(filePath, (err, content) => {
       if (err) {
         res.writeHead(404);
-        return res.end("404 - Not Found");
+        return res.end("Not Found");
       }
       res.writeHead(200, { "Content-Type": contentType });
       res.end(content);
@@ -177,8 +137,7 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-/* ---------------- START SERVER ---------------- */
 const PORT = process.env.PORT || 5767;
 server.listen(PORT, () =>
-  console.log(`Server running on port ${PORT}`)
+  console.log(`✅ Server running on port ${PORT}`)
 );
